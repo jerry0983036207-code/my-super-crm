@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>房產 x 保險雲端 CRM (V22 人脈版)</title>
+    <title>房產 x 保險雲端 CRM (V23 多重身份版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -272,9 +272,10 @@
                 homeAddress: '', companyAddress: '',
                 lineId: '', facebook: '', instagram: '',
                 isRealEstate: false, reBudget: '', reRequirements: '', reType: '大樓', reUsage: '自住', reRoom: '', reParking: '需要', reAge: '',
-                isInsurance: false, insuranceCategory: '客戶', insBudget: '', insNeeds: '',
+                isInsurance: false, insBudget: '', insNeeds: '',
                 insProducts: [],
-                referrals: '' // NEW: Referral field
+                insuranceCategories: [], // V23 Multi-select
+                referrals: '' 
             });
 
             const showToast = (message, type = 'success') => setToast({ message, type });
@@ -327,8 +328,8 @@
                     occupation: '', income: '', maritalStatus: '未婚', 
                     homeAddress: '', companyAddress: '', lineId: '', facebook: '', instagram: '',
                     isRealEstate: false, reBudget: '', reRequirements: '', reType: '大樓', reUsage: '自住', reRoom: '', reParking: '需要', reAge: '',
-                    isInsurance: false, insuranceCategory: '客戶', insBudget: '', insNeeds: '', insProducts: [],
-                    referrals: '' // Reset
+                    isInsurance: false, insuranceCategories: [], insBudget: '', insNeeds: '', insProducts: [],
+                    referrals: '' 
                 });
                 setIsModalOpen(true);
             };
@@ -337,6 +338,11 @@
                 setIsEditMode(true); setEditId(c.id);
                 const tags = c.tags ? c.tags.join(' ') : '';
                 const r = c.realEstateData || {}; const i = c.insuranceData || {};
+                
+                // Legacy support for single category -> array
+                let cats = i.categories || [];
+                if (cats.length === 0 && i.category) cats = [i.category];
+
                 setFormData({
                     name: c.name||'', phone: c.phone||'', tags, status: c.status||'新客戶', gender: c.gender||'男', age: c.age||'', region: c.region||'', birthday: c.birthday||'',
                     occupation: c.occupation||'', income: c.income||'', maritalStatus: c.maritalStatus||'未婚',
@@ -345,9 +351,9 @@
                     isRealEstate: !!c.types.realEstate, 
                     reBudget: r.budget||'', reRequirements: r.requirements?r.requirements.join(' '):'', reType: r.type || '大樓', 
                     reUsage: r.usage || '自住', reRoom: r.room || '', reParking: r.parking || '需要', reAge: r.age || '',
-                    isInsurance: !!c.types.insurance, insuranceCategory: i.category||'客戶', insBudget: i.budget||'', insNeeds: i.needs?i.needs.join(' '):'',
+                    isInsurance: !!c.types.insurance, insuranceCategories: cats, insBudget: i.budget||'', insNeeds: i.needs?i.needs.join(' '):'',
                     insProducts: i.products || [],
-                    referrals: c.referrals || '' // Load
+                    referrals: c.referrals || ''
                 });
                 setIsModalOpen(true);
             };
@@ -362,13 +368,13 @@
                         occupation: formData.occupation, income: formData.income, maritalStatus: formData.maritalStatus,
                         homeAddress: formData.homeAddress, companyAddress: formData.companyAddress,
                         lineId: formData.lineId, facebook: formData.facebook, instagram: formData.instagram,
-                        referrals: formData.referrals, // Save
+                        referrals: formData.referrals,
                         types: { realEstate: formData.isRealEstate, insurance: formData.isInsurance },
                         realEstateData: formData.isRealEstate ? { 
                             region: formData.region, budget: formData.reBudget, requirements: processTags(formData.reRequirements), 
                             type: formData.reType, usage: formData.reUsage, room: formData.reRoom, parking: formData.reParking, age: formData.reAge 
                         } : null,
-                        insuranceData: formData.isInsurance ? { category: formData.insuranceCategory, age: formData.age, budget: formData.insBudget, needs: processTags(formData.insNeeds), products: formData.insProducts } : null
+                        insuranceData: formData.isInsurance ? { categories: formData.insuranceCategories, age: formData.age, budget: formData.insBudget, needs: processTags(formData.insNeeds), products: formData.insProducts } : null
                     };
                     if (isEditMode && editId) { await db.collection('clients').doc(editId).update(data); showToast("更新成功"); }
                     else { await db.collection('clients').add({ ...data, createdAt: Date.now(), logs: [], isPinned: false }); showToast("新增成功"); }
@@ -425,11 +431,12 @@
             const handleDelete = async (id) => { if(confirm("確定刪除？")) { await db.collection('clients').doc(id).delete(); showToast("已刪除"); } };
             
             const handleExportCSV = () => {
-                const headers = ["姓名,電話,狀態,區域,性別,年齡,月收入,職業,婚姻,住家地址,公司地址,LINE,FB,IG,推薦名單,保險產品,房產類型,用途,房數,車位,屋齡,房產預算,最後聯絡,下次跟進"];
+                const headers = ["姓名,電話,狀態,區域,性別,年齡,月收入,職業,婚姻,住家地址,公司地址,LINE,FB,IG,推薦名單,保險身份,保險產品,房產類型,用途,房數,車位,屋齡,房產預算,最後聯絡,下次跟進"];
                 const rows = clients.map(c => [
                     c.name, c.phone, c.status, c.region, c.gender, c.age, c.income, c.occupation, c.maritalStatus,
                     c.homeAddress || '', c.companyAddress || '', c.lineId || '', c.facebook || '', c.instagram || '',
-                    c.referrals || '', // Export
+                    c.referrals || '',
+                    c.insuranceData?.categories ? c.insuranceData.categories.join(';') : (c.insuranceData?.category || ''),
                     c.insuranceData?.products ? c.insuranceData.products.join(';') : '',
                     c.realEstateData?.type || '', c.realEstateData?.usage || '', c.realEstateData?.room || '', c.realEstateData?.parking || '', c.realEstateData?.age || '', c.realEstateData?.budget || '',
                     c.lastContactAt ? new Date(c.lastContactAt).toLocaleDateString() : '',
@@ -463,14 +470,19 @@
                 setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
             };
 
+            const handleCategoryChange = (category) => {
+                setFormData(prev => {
+                    const current = prev.insuranceCategories || [];
+                    if (current.includes(category)) return { ...prev, insuranceCategories: current.filter(c => c !== category) };
+                    return { ...prev, insuranceCategories: [...current, category] };
+                });
+            };
+
             const handleProductChange = (product) => {
                 setFormData(prev => {
                     const current = prev.insProducts || [];
-                    if (current.includes(product)) {
-                        return { ...prev, insProducts: current.filter(p => p !== product) };
-                    } else {
-                        return { ...prev, insProducts: [...current, product] };
-                    }
+                    if (current.includes(product)) return { ...prev, insProducts: current.filter(p => p !== product) };
+                    return { ...prev, insProducts: [...current, product] };
                 });
             };
 
@@ -527,7 +539,7 @@
             const getRiskLevel = (ts) => { if(!ts) return 'bg-gray-100 text-gray-500'; const d = (Date.now()-ts)/86400000; return d>30 ? 'bg-red-100 text-red-600 font-bold' : (d>14 ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'); };
             const getRiskLabel = (ts) => { if(!ts) return '未聯繫'; const d = Math.floor((Date.now()-ts)/86400000); return d===0 ? '今天' : `${d}天前`; };
             const getStatusColor = (s) => ({'新客戶':'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200','跟進中':'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200','考慮中':'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200','已成交':'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200','已結案':'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'})[s] || 'bg-gray-100';
-            const getInsCatColor = (c) => ({'合作':'bg-indigo-100 text-indigo-800 border-indigo-200','增員':'bg-pink-100 text-pink-800 border-pink-200','客戶':'bg-emerald-100 text-emerald-800 border-emerald-200'})[c] || 'bg-gray-100';
+            const getInsCatColor = (c) => ({'合作夥伴':'bg-indigo-100 text-indigo-800 border-indigo-200','增員對象':'bg-pink-100 text-pink-800 border-pink-200','一般客戶':'bg-emerald-100 text-emerald-800 border-emerald-200'})[c] || 'bg-gray-100';
             const getReTypeColor = (t) => {
                 if (t === '大樓') return 'bg-blue-100 text-blue-800 border-blue-200';
                 if (t === '透天') return 'bg-orange-100 text-orange-800 border-orange-200';
@@ -563,9 +575,9 @@
                     <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div>
                             <h1 className="text-3xl font-bold flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-                                <Icons.Cloud/> 智能戰情室 <span className="text-xs bg-gray-800 text-white px-2 py-1 rounded-full">V22</span>
+                                <Icons.Cloud/> 智能戰情室 <span className="text-xs bg-gray-800 text-white px-2 py-1 rounded-full">V23</span>
                             </h1>
-                            <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">房產 x 保險 • 人脈裂變</p>
+                            <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">房產 x 保險 • 多重身份</p>
                         </div>
                         <div className="flex gap-2 w-full sm:w-auto items-center">
                             <button onClick={()=>setDarkMode(!darkMode)} className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-yellow-400 mr-2">{darkMode ? <Icons.Sun/> : <Icons.Moon/>}</button>
@@ -751,12 +763,19 @@
                                             )}
                                             {c.types.insurance && <div className="bg-emerald-50 dark:bg-emerald-900/20 p-2.5 rounded-lg text-xs text-emerald-900 dark:text-emerald-200 border border-emerald-100 dark:border-emerald-900/30">
                                                 <div className="flex items-center font-bold mb-1"><Icons.Shield/><span className="ml-1">保險</span>
-                                                {c.insuranceData?.category && <span className={`ml-2 text-[10px] px-1.5 rounded border ${getInsCatColor(c.insuranceData.category)}`}>{c.insuranceData.category}</span>}
+                                                {/* Multi-category Badges */}
+                                                {c.insuranceData?.categories && c.insuranceData.categories.length > 0 ? (
+                                                    c.insuranceData.categories.map(cat => (
+                                                        <span key={cat} className={`ml-1 text-[10px] px-1.5 rounded border ${getInsCatColor(cat)}`}>{cat}</span>
+                                                    ))
+                                                ) : (
+                                                    c.insuranceData?.category && <span className={`ml-2 text-[10px] px-1.5 rounded border ${getInsCatColor(c.insuranceData.category)}`}>{c.insuranceData.category}</span>
+                                                )}
                                                 <span className="ml-auto opacity-75">{c.insuranceData?.budget}萬/年</span></div>
                                                 
                                                 {/* Insurance Products Tags */}
                                                 {c.insuranceData?.products && c.insuranceData.products.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1 mb-1">
+                                                    <div className="flex flex-wrap gap-1 mb-1 mt-1">
                                                         {c.insuranceData.products.map(p => (
                                                             <span key={p} className={`text-[10px] px-1.5 py-0.5 rounded ${getProductColor(p)}`}>{p}</span>
                                                         ))}
@@ -829,7 +848,7 @@
                                         </div>
                                     </div>
 
-                                    {/* Referral Section (NEW) */}
+                                    {/* Referral Section */}
                                     <div className="col-span-2">
                                         <label className="text-xs font-bold text-gray-500 mb-1 block">推薦名單 (介紹人/被介紹人)</label>
                                         <textarea name="referrals" value={formData.referrals} onChange={handleChange} className="w-full border dark:border-dark-700 dark:bg-dark-900 rounded p-2 text-sm h-20" placeholder="例如：介紹了王小明、陳大華..." />
@@ -839,15 +858,24 @@
                                     
                                     <div className="pt-2 space-y-2">
                                         <div className={`border rounded p-2 ${formData.isRealEstate?'border-blue-400 bg-blue-50 dark:bg-blue-900/30':''}`}><label className="flex items-center"><input type="checkbox" name="isRealEstate" checked={formData.isRealEstate} onChange={handleChange} className="mr-2" /><span className="font-bold text-blue-700 dark:text-blue-400">房產需求</span></label>{formData.isRealEstate && <div className="mt-2 space-y-2"><div className="grid grid-cols-2 gap-2"><select name="reType" value={formData.reType} onChange={handleChange} className="w-full border rounded p-1 text-sm dark:bg-dark-900"><option value="大樓">🏢 電梯大樓</option><option value="透天">🏠 透天厝</option><option value="公寓">🏚️ 公寓</option><option value="華廈">🏙️ 華廈</option><option value="店面">🏪 店面</option><option value="土地">🏞️ 土地</option></select><select name="reUsage" value={formData.reUsage} onChange={handleChange} className="w-full border rounded p-1 text-sm dark:bg-dark-900"><option value="自住">自住</option><option value="投資">投資</option><option value="收租">收租</option><option value="置產">置產</option></select></div><div className="grid grid-cols-3 gap-2"><input type="text" name="reRoom" value={formData.reRoom} onChange={handleChange} className="w-full border rounded p-1 text-sm dark:bg-dark-900" placeholder="房數 (如: 3房)" /><select name="reParking" value={formData.reParking} onChange={handleChange} className="w-full border rounded p-1 text-sm dark:bg-dark-900"><option value="需要">需要車位</option><option value="平面">平面車位</option><option value="機械">機械車位</option><option value="不拘">不拘</option></select><select name="reAge" value={formData.reAge} onChange={handleChange} className="w-full border rounded p-1 text-sm dark:bg-dark-900"><option value="">屋齡不拘</option><option value="新成屋">新成屋</option><option value="10年內">10年內</option><option value="20年內">20年內</option><option value="30年以上">30年以上</option></select></div><div className="flex gap-2"><input type="number" name="reBudget" value={formData.reBudget} onChange={handleChange} className="w-1/2 border rounded p-1 text-sm dark:bg-dark-900" placeholder="預算(萬)" /><input type="text" name="reRequirements" value={formData.reRequirements} onChange={handleChange} className="w-1/2 border rounded p-1 text-sm dark:bg-dark-900" placeholder="需求" /></div></div>}</div>
+                                        
                                         <div className={`border rounded p-2 ${formData.isInsurance?'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30':''}`}><label className="flex items-center"><input type="checkbox" name="isInsurance" checked={formData.isInsurance} onChange={handleChange} className="mr-2" /><span className="font-bold text-emerald-700 dark:text-emerald-400">保險需求</span></label>
                                         {formData.isInsurance && <div className="mt-2 space-y-2">
-                                            <select name="insuranceCategory" value={formData.insuranceCategory} onChange={handleChange} className="w-full border rounded p-1 text-sm dark:bg-dark-900"><option value="客戶">一般客戶</option><option value="合作">合作夥伴</option><option value="增員">增員對象</option></select>
+                                            {/* Multi-Select for Insurance Category */}
+                                            <div className="flex flex-wrap gap-2 mb-2">
+                                                {['一般客戶', '增員對象', '合作夥伴'].map(cat => (
+                                                    <label key={cat} className={`flex items-center text-xs px-2 py-1 rounded border cursor-pointer select-none transition-colors ${formData.insuranceCategories.includes(cat) ? 'bg-indigo-100 border-indigo-300 text-indigo-800' : 'bg-gray-50 dark:bg-dark-800 border-gray-300 dark:border-dark-600'}`}>
+                                                        <input type="checkbox" className="hidden" checked={formData.insuranceCategories.includes(cat)} onChange={() => handleCategoryChange(cat)} />
+                                                        {formData.insuranceCategories.includes(cat) && <span className="mr-1">✓</span>}{cat}
+                                                    </label>
+                                                ))}
+                                            </div>
                                             
-                                            {/* Product Selection for '客戶' */}
-                                            {formData.insuranceCategory === '客戶' && (
-                                                <div className="flex flex-wrap gap-2 mb-2">
+                                            {/* Product Selection only for '一般客戶' */}
+                                            {formData.insuranceCategories.includes('一般客戶') && (
+                                                <div className="flex flex-wrap gap-2 mb-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded border border-emerald-100 dark:border-emerald-900/30">
                                                     {['醫療險', '投資型', '台幣儲蓄', '美元儲蓄', '分紅保單'].map(prod => (
-                                                        <label key={prod} className={`flex items-center text-xs px-2 py-1 rounded border cursor-pointer ${formData.insProducts?.includes(prod) ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-white dark:bg-dark-800 border-gray-300 dark:border-dark-600'}`}>
+                                                        <label key={prod} className={`flex items-center text-xs px-2 py-1 rounded border cursor-pointer select-none ${formData.insProducts?.includes(prod) ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-white dark:bg-dark-800 border-gray-300 dark:border-dark-600'}`}>
                                                             <input type="checkbox" className="hidden" checked={formData.insProducts?.includes(prod)} onChange={() => handleProductChange(prod)} />
                                                             {prod}
                                                         </label>
@@ -855,7 +883,7 @@
                                                 </div>
                                             )}
 
-                                            <div className="flex gap-2"><input type="number" name="insBudget" value={formData.insBudget} onChange={handleChange} className="w-1/2 border rounded p-1 text-sm dark:bg-dark-900" placeholder="預算(萬/年)" /><input type="text" name="insNeeds" value={formData.insNeeds} onChange={handleChange} className="w-1/2 border rounded p-1 text-sm dark:bg-dark-900" placeholder="需求" /></div>
+                                            <div className="flex gap-2"><input type="number" name="insBudget" value={formData.insBudget} onChange={handleChange} className="w-1/2 border rounded p-1 text-sm dark:bg-dark-900" placeholder="預算(萬/年)" /><input type="text" name="insNeeds" value={formData.insNeeds} onChange={handleChange} className="w-1/2 border rounded p-1 text-sm dark:bg-dark-900" placeholder="其他需求" /></div>
                                         </div>}</div>
                                     </div>
                                     <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700">儲存</button>
@@ -908,3 +936,4 @@
     </script>
 </body>
 </html>
+
